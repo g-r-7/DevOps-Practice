@@ -1,0 +1,42 @@
+
+services:
+  backapp:
+    depends_on:
+      - database
+    container_name: backapp
+    image: gr77/backapp:v2.0.0
+    restart: always
+    environment:
+      - PG_DB=Employee
+      - PG_USER=postgres
+      - PG_PASSWORD=password
+      - PG_HOST=database
+    ports:
+      - 8887:8887
+    networks:
+      - my-network
+
+
+  database:
+    image: postgres
+    container_name: database
+    restart: always
+    user: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=Employee
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - 5432:5432
+    networks:
+      - my-network
+
+
+volumes:
+  db-data:
+
+networks:
+  my-network:
+
