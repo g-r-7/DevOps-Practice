@@ -33,8 +33,8 @@
 ## Run with docker compose:
 
 ```bash	
-> docker compose -t build gr77/backapp:v2.0.0
-> docker compose push gr77/backapp:v2.0.0
+> docker build -t gr77/backapp:v2.0.0 .
+> docker push gr77/backapp:v2.0.0
 > docker compose up
 ```
 

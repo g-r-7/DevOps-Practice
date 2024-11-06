@@ -25,6 +25,9 @@ app.get("/", (req, res, next) => {
 //CRUD routes
 app.use("/users", require("./routes/users"));
 
+//health check routes
+app.use("/health", require("./routes/health"));
+
 //error handling
 app.use((error, req, res, next) => {
     console.log(error);
