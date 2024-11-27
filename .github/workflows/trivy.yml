@@ -1,0 +1,29 @@
+name: Scanning code
+
+on:
+  push:
+    branches:
+      - main # ou votre branche par défaut
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # Job pour l'analyse de sécurité avec Trivy
+  trivy_scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        
+      - name: Installer Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.39.0/trivy_0.39.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.39.0_Linux-64bit.deb
+          
+      - name: Scanner de vulnérabilité avec Trivy
+        run: |
+          trivy fs ./BackApp/  # Analyse du code source du projet
