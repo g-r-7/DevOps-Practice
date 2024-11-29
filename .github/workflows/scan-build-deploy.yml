@@ -1,0 +1,83 @@
+name: Scan, build and deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+
+jobs:
+  trivy_scan:
+    runs-on: ubuntu-latest    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+        # Installation de Trivy
+      - name: Installer Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.39.0/trivy_0.39.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.39.0_Linux-64bit.deb
+        
+        # Scanner de vulnérabilité avec Trivy et sotockage des données dans trivy_scan_results.txt
+      - name: Scanner de vulnérabilité avec Trivy
+        run: |
+          trivy fs ./BackApp/ --format table --output trivy_scan_results.txt
+        
+      # Chargement des résultats de l'analyse
+      - name: Sauvegarde de l'analyse
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy_scan_results
+          path: trivy_scan_results.txt
+
+  
+  # Build de test l'applications
+  build_app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BackApp
+
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: Employee
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    
+    env:
+      PG_DB: Employee
+      PG_USER: postgres
+      PG_PASSWORD: password
+      PG_HOST: localhost
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3     
+      
+      - name: Installer Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22.11.0'
+        
+      - name: Build
+        run: |
+          npm install
+          npm run start &
+  
+      - name: Test que l'application est prête
+        run: curl -X GET http://localhost:8887/health/live || exit 1
