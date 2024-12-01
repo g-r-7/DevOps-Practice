@@ -27,7 +27,7 @@ jobs:
         # Scanner de vulnérabilité avec Trivy et sotockage des données dans trivy_scan_results.txt
       - name: Scanner de vulnérabilité avec Trivy
         run: |
-          trivy fs ./BackApp/ --format table --output trivy_scan_results.txt
+          trivy fs . --format table --output trivy_scan_results.txt --exit-code 1 --severity HIGH,CRITICAL
         
       # Chargement des résultats de l'analyse
       - name: Sauvegarde de l'analyse
@@ -35,14 +35,18 @@ jobs:
         with:
           name: trivy_scan_results
           path: trivy_scan_results.txt
+      
+      - name: Fail if vulnerabilities found
+        run: |
+          if [ $? -ne 0 ]; then
+            echo "Vulnerabilities found!";
+            exit 1;
+          fi
 
   
   # Build de test l'applications
   build_app:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: BackApp
 
     services:
       postgres:
