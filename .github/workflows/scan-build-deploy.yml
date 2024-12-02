@@ -85,3 +85,120 @@ jobs:
   
       - name: Test que l'application est prête
         run: curl -X GET http://localhost:8887/health/live || exit 1
+
+
+  # Déploiement sur Render
+  deploy_render:
+    runs-on: ubuntu-latest
+    needs: [trivy_scan, build_app]
+
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      DATABASE_USER: ${{ secrets.DATABASE_USER }}
+      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+      SERVICE_NAME: ${{ secrets.RENDER_SERVICE_NAME }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      
+      # Vérification de l'existance du service pour le provisionnement
+      - name: Check if Render service exists
+        id: check-service
+        run: |          
+          # Requête pour récupérer les services existants
+          SERVICE_EXISTS=$(curl -s -X GET \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            https://api.render.com/v1/services | jq -r --arg NAME "$SERVICE_NAME" '.[] | select(.name == $NAME) | .id')
+          
+          if [ -z "$SERVICE_EXISTS" ]; then
+            echo "Service $SERVICE_NAME does not exist."
+            echo "provision=true" >> $GITHUB_ENV
+          else
+            echo "Service $SERVICE_NAME already exists with ID: $SERVICE_EXISTS."
+            echo "provision=false" >> $GITHUB_ENV
+          fi
+
+      
+      # Provisionnement
+
+      # Créer la base PostgreSQL
+      - name: Create PostgreSQL Database
+        run: |
+          DB_RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "$SERVICE_NAME",
+              "region": "oregon",
+              "plan": "free",
+              "databaseType": "postgres",
+              "envVars": {
+                "POSTGRES_USER": "$DATABASE_USER",
+                "POSTGRES_PASSWORD": "$DATABASE_PASSWORD",
+                "POSTGRES_DB": "employee"
+              }
+            }' \
+            https://api.render.com/v1/databases)
+
+          echo "Database Response: $DB_RESPONSE"
+
+          # Extraire le Internal Database URL pour les variables d'environnement
+          DB_INTERNAL_URL=$(echo $DB_RESPONSE | jq -r '.connection.internalDatabaseUrl')
+          echo "DB_INTERNAL_URL=$DB_INTERNAL_URL" >> $GITHUB_ENV
+
+      - name: Create Web Service
+        if: env.provision == 'true'
+        env:
+          DB_INTERNAL_URL: ${{ env.DB_INTERNAL_URL }}
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "$SERVICE_NAME",
+              "type": "web_service",
+              "env": "node",
+              "branch": "main",
+              "repo": "https://github.com/g-r-7/DevOps-Practice",
+              "buildCommand": "npm install",
+              "startCommand": "npm start &",
+              "envVars": [
+                { "key": "DB_HOST", "value": "'$DB_INTERNAL_URL'" },
+                { "key": "DB_USER", "value": "$DATABASE_USER" },
+                { "key": "DB_PASSWORD", "value": "$DATABASE_PASSWORD" },
+                { "key": "DB_NAME", "value": "employee" }
+              ]
+            }' \
+            https://api.render.com/v1/services
+
+      # Vérifier les services
+      - name: Verify Services
+        if: env.provision == 'true'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          curl -X GET -H "Authorization: Bearer $RENDER_API_KEY" https://api.render.com/v1/servicesF
+
+          
+      #Déploiement du service
+      - name: Déploiement
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          SERVICE_ID=$(curl -s -X GET \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            https://api.render.com/v1/services | jq -r '.[] | select(.name == "$SERVICE_NAME").id')
+
+          if [ -z "$SERVICE_ID" ]; then
+            echo "Error: Service '$SERVICE_NAME' not found on Render."
+            exit 1
+          fi
+
+          # Déclencher le déploiement
+          DEPLOY_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            https://api.render.com/v1/services/$SERVICE_ID/deploys)
+
+          echo "Deploy Response: $DEPLOY_RESPONSE"
