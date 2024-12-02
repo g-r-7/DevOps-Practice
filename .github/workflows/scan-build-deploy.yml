@@ -85,3 +85,152 @@ jobs:
   
       - name: Test que l'application est prête
         run: curl -X GET http://localhost:8887/health/live || exit 1
+
+
+  # Déploiement sur Render
+  deploy_render:
+    runs-on: ubuntu-latest
+    # needs: [trivy_scan, build_app]
+
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_OWNER_ID: ${{ secrets.RENDER_OWNER_ID }}
+      RENDER_SERVICE_NAME: ${{ secrets.RENDER_SERVICE_NAME }}
+      RENDER_DB_NAME: ${{ secrets.RENDER_DB_NAME }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      
+      # Vérification de l'existance du service pour le provisionnement
+      - name: Check if Render service exists
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        id: check-service
+        run: |
+          SERVICE_EXISTS=$(curl --silent --request GET \
+          --url 'https://api.render.com/v1/services' \
+          --header 'accept: application/json' \
+          --header 'Authorization: Bearer $RENDER_API_KEY')
+
+          echo "services: $SERVICE_EXISTS"
+          
+          if [ "$SERVICE_EXISTS" == "[]" ]; then
+            echo "Service $RENDER_SERVICE_NAME does not exist."
+            echo "provision=true" >> $GITHUB_ENV
+          else
+            echo "Service $RENDER_SERVICE_NAME already exists."
+            echo "provision=false" >> $GITHUB_ENV
+          fi
+
+      
+      ########## Provisionnement ###############
+
+      # Créer la base PostgreSQL
+      - name: Create PostgreSQL Database
+        if: env.provision == 'true'
+        env:
+          DATABASE_USER: ${{ secrets.DATABASE_USER }}
+
+        run: |
+          DB_RESPONSE=$(curl --silent --request POST \
+          --url https://api.render.com/v1/postgres \
+          --header 'accept: application/json' \
+          --header 'Authorization: Bearer $RENDER_API_KEY' \
+          --header 'content-type: application/json' \
+          --data '
+          {
+            "databaseName": "employee",
+            "databaseUser": "$DATABASE_USER",
+            "enableHighAvailability": false,
+            "plan": "free",
+            "version": "16",
+            "name": "$RENDER_DB_NAME",
+            "ownerId": "$RENDER_OWNER_ID"
+          }')
+
+          echo "Database Successfully Created"
+
+          # Extraire les valeurs avec jq
+          id=$(echo "$DB_RESPONSE" | jq -r '.id')
+          databaseName=$(echo "$DB_RESPONSE" | jq -r '.databaseName')
+          databaseUser=$(echo "$DB_RESPONSE" | jq -r '.databaseUser')
+
+          # Ajouter les variables à l'environnement GitHub
+          echo "PG_ID=$id" >> $GITHUB_ENV
+          echo "PG_DB_NAME=$databaseName" >> $GITHUB_ENV
+          echo "PG_DB_USER=$databaseUser" >> $GITHUB_ENV
+
+          # Informations de connection
+          DB_CONNECTION=$(curl --silent --request GET \
+          --url https://api.render.com/v1/postgres/$PG_ID/connection-info \
+          --header 'accept: application/json'
+          --header 'Authorization: Bearer $RENDER_API_KEY' \)
+
+          # Extraire les valeurs avec jq
+          password=$(echo "$DB_CONNECTION" | jq -r '.password')
+          internal_host=$(echo "$DB_CONNECTION" | jq -r '.internalConnectionString')
+
+          # Ajouter les variables à l'environnement GitHub
+          echo "PG_PASSWORD=$password" >> $GITHUB_ENV
+          echo "PG_HOST=$internal_host" >> $GITHUB_ENV
+
+
+      - name: Create Web Service
+        if: env.provision == 'true'
+        env:
+          PG_HOST: ${{ env.PG_HOST }}
+          PG_DB_NAME: ${{ env.PG_DB_NAME }}
+          PG_DB_USER: ${{ env.PG_DB_USER }}
+          PG_PASSWORD: ${{ env.PG_PASSWORD }}
+        run: |
+          SERVICE_RESPONSE=$(curl --silent --request POST \
+          --url https://api.render.com/v1/services \
+          --header 'accept: application/json' \
+          --header 'Authorization: Bearer $RENDER_API_KEY' \
+          --header 'content-type: application/json' \
+          --data '
+          {
+            "type": "web_service",
+            "autoDeploy": "no",
+            "serviceDetails": {
+              "pullRequestPreviewsEnabled": "no",
+              "previews": {
+                "generation": "off"
+              },
+              "runtime": "node"
+            },
+            "name": "$RENDER_SERVICE_NAME",
+            "repo": "https://github.com/g-r-7/DevOps-Practrice",
+            "envVars": [
+              {"key": "PG_DB", "value": "$PG_DB_NAME"},
+              {"key": "PG_USER", "value": "$PG_DB_USER"},
+              {"key": "PG_PASSWORD", "value": "$PG_PASSWORD"},
+              {"key": "PG_HOST", "value": "$PG_HOST"}
+            ]
+          }')
+
+          service_id=$(echo "$SERVICE_RESPONSE" | jq -r '.service.id')
+
+          # Ajouter l'ID à l'environnement GitHub
+          echo "RENDER_SERVICE_ID=$service_id" >> $GITHUB_ENV
+
+          
+      ########## Déploiement du service ############
+      - name: Déploiement
+        env:
+          SERVICE_ID: ${{ env.RENDER_SERVICE_ID }}
+        run: |
+          DEPLOY_RESPONSE=$(curl --silent --request POST \
+          --url https://api.render.com/v1/$SERVICE_ID/$SERVICE_ID/deploys \
+          --header 'accept: application/json' \
+          --header 'Authorization: Bearer $RENDER_API_KEY' \
+          --header 'content-type: application/json' \
+          --data '
+          {
+            "clearCache": "do_not_clear"
+          }')
+
+          
+          echo "Deploy Response: $DEPLOY_RESPONSE"
