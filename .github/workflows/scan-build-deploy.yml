@@ -1,4 +1,4 @@
-name: Scan, build and deploy
+name: Scan, build and deploy to Render
 
 on:
   push:
@@ -10,6 +10,8 @@ on:
 
 
 jobs:
+
+  # Scan et analyse des dépendances avec Trivy
   trivy_scan:
     runs-on: ubuntu-latest    
     steps:
@@ -90,33 +92,13 @@ jobs:
   # Déploiement sur Render
   deploy_render:
     runs-on: ubuntu-latest
-    # needs: [trivy_scan, build_app]
+    needs: [trivy_scan, build_app]
 
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         
-      
-      # # Vérification de l'existance du service pour le provisionnement
-      # - name: Check if Render service exists
-      #   id: check-service
-      #   run: |
-      #     SERVICE_EXISTS=$(curl --silent --request GET \
-      #     --url 'https://api.render.com/v1/services' \
-      #     --header 'accept: application/json' \
-      #     --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}')
-
-      #     echo "services: $SERVICE_EXISTS"
-          
-      #     if [ "$SERVICE_EXISTS" == "[]" ]; then
-      #       echo "Service ${{ secrets.RENDER_SERVICE_NAME }} does not exist."
-      #       echo "provision=true" >> $GITHUB_ENV
-      #     else
-      #       echo "Service ${{ secrets.RENDER_SERVICE_NAME }} already exists."
-      #       echo "provision=false" >> $GITHUB_ENV
-      #     fi
-      
       
       # Vérification de l'existance de la base de donnée pour le provisionnement
       - name: Check if the database exists
@@ -126,8 +108,6 @@ jobs:
           --url 'https://api.render.com/v1/postgres?name=${{ secrets.RENDER_DB_NAME }}&ownerId=${{ secrets.RENDER_OWNER_ID }}' \
           --header 'accept: application/json' \
           --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}')
-
-          echo "database: $DB_EXISTS"
           
           if [ "$DB_EXISTS" == "[]" ]; then
             echo "The database does not exist."
@@ -160,8 +140,6 @@ jobs:
             "ownerId": "${{ secrets.RENDER_OWNER_ID }}"
           }')
 
-          echo "DB Response: $DB_RESPONSE"
-
           if echo "$DB_RESPONSE" | js 'has("message")'; then
           echo "Database Creation Failed"
           exit 1
@@ -175,8 +153,6 @@ jobs:
           databaseUser=$(echo "$DB_RESPONSE" | jq -r '.databaseUser')
           databaseHostname=$(echo "$DB_RESPONSE" | jq '.dashboardUrl' | awk -F'/' '{print $NF}' | sed 's/"$//')
 
-          echo "postgres id: $id"
-
           # Ajouter les variables à l'environnement GitHub
           echo "PG_ID=$id" >> $GITHUB_ENV
           echo "PG_DB_NAME=$databaseName" >> $GITHUB_ENV
@@ -189,8 +165,6 @@ jobs:
           --header 'accept: application/json' \
           --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}')
 
-          echo "informations de connexion: $DB_CONNECTION"
-
           # Extraire le mot de passe avec jq
           password=$(echo "$DB_CONNECTION" | jq -r '.password')
 
@@ -201,8 +175,27 @@ jobs:
       #### l'API ne permet pas la création du web_service avec le plan free.
       #### J'ai alors créé le web_service node dans l'application et les variables d'environments seront chargées après la création de la base de données
 
+
+      # # Vérification de l'existance du service pour le provisionnement
+      # - name: Check if Render service exists
+      #   id: check-service
+      #   run: |
+      #     SERVICE_EXISTS=$(curl --silent --request GET \
+      #     --url 'https://api.render.com/v1/services' \
+      #     --header 'accept: application/json' \
+      #     --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}')
+          
+      #     if [ "$SERVICE_EXISTS" == "[]" ]; then
+      #       echo "The service does not exist."
+      #       echo "provision_service=true" >> $GITHUB_ENV
+      #     else
+      #       echo "The service already exists."
+      #       echo "provision_service=false" >> $GITHUB_ENV
+      #     fi
+      
+
       # - name: Create Web Service
-      #   if: env.provision == 'true'
+      #   if: env.provision_service == 'true'
       #   run: |
       #     SERVICE_RESPONSE=$(curl --silent --request POST \
       #     --url https://api.render.com/v1/services \
@@ -241,8 +234,6 @@ jobs:
       #       ]
       #     }')
 
-      #     echo "respose create service: $SERVICE_RESPONSE"
-
       #     if echo "$SERVICE_RESPONSE" | js 'has("message")'; then
       #     echo "Service Creation Failed"
       #     exit 1
@@ -272,8 +263,6 @@ jobs:
             {"key": "PG_HOST", "value": "${{env.PG_HOST}}"}
           ]')
 
-          echo "Response update vars: $RESPONSE_UPDATE_VARS"
-
           if echo "$RESPONSE_UPDATE_VARS" | jq 'has("message")'; then
           echo "Variables Update Failed"
           exit 1
@@ -295,11 +284,10 @@ jobs:
             "clearCache": "do_not_clear"
           }')
           
-          echo "Response deploy: $DEPLOY_RESPONSE"
-
           if echo "$DEPLOY_RESPONSE" | js 'has("message")'; then
           echo "Deployment Failed"
           exit 1
           fi
           
           echo "Deploy Response: $DEPLOY_RESPONSE"
+          
