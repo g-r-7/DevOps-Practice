@@ -98,22 +98,42 @@ jobs:
         uses: actions/checkout@v3
         
       
-      # Vérification de l'existance du service pour le provisionnement
-      - name: Check if Render service exists
+      # # Vérification de l'existance du service pour le provisionnement
+      # - name: Check if Render service exists
+      #   id: check-service
+      #   run: |
+      #     SERVICE_EXISTS=$(curl --silent --request GET \
+      #     --url 'https://api.render.com/v1/services' \
+      #     --header 'accept: application/json' \
+      #     --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}')
+
+      #     echo "services: $SERVICE_EXISTS"
+          
+      #     if [ "$SERVICE_EXISTS" == "[]" ]; then
+      #       echo "Service ${{ secrets.RENDER_SERVICE_NAME }} does not exist."
+      #       echo "provision=true" >> $GITHUB_ENV
+      #     else
+      #       echo "Service ${{ secrets.RENDER_SERVICE_NAME }} already exists."
+      #       echo "provision=false" >> $GITHUB_ENV
+      #     fi
+      
+      
+      # Vérification de l'existance de la base de donnée pour le provisionnement
+      - name: Check if the database exists
         id: check-service
         run: |
-          SERVICE_EXISTS=$(curl --silent --request GET \
-          --url 'https://api.render.com/v1/services' \
+          DB_EXISTS=$(curl --silent --request GET \
+          --url 'https://api.render.com/v1/postgres?name=${{ secrets.RENDER_DB_NAME }}&ownerId=${{ secrets.RENDER_OWNER_ID }}' \
           --header 'accept: application/json' \
           --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}')
 
-          echo "services: $SERVICE_EXISTS"
+          echo "database: $DB_EXISTS"
           
-          if [ "$SERVICE_EXISTS" == "[]" ]; then
-            echo "Service ${{ secrets.RENDER_SERVICE_NAME }} does not exist."
+          if [ "$DB_EXISTS" == "[]" ]; then
+            echo "The database does not exist."
             echo "provision=true" >> $GITHUB_ENV
           else
-            echo "Service ${{ secrets.RENDER_SERVICE_NAME }} already exists."
+            echo "The database already exists."
             echo "provision=false" >> $GITHUB_ENV
           fi
 
@@ -237,17 +257,17 @@ jobs:
       ###### PUT des variables d'environnement au service #####
       - name: put environnement variables
         run: |
-          RESPONSE_UPDATE_VARS=$(curl --request PUT \
+          RESPONSE_UPDATE_VARS=$(curl --silent --request PUT \
           --url https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/env-vars \
           --header 'accept: application/json' \
           --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}' \
           --header 'content-type: application/json' \
           --data '
           [
-            {"key": "PG_DB", "value": "$PG_DB_NAME"},
-            {"key": "PG_USER", "value": "$PG_DB_USER"},
-            {"key": "PG_PASSWORD", "value": "$PG_PASSWORD"},
-            {"key": "PG_HOST", "value": "$PG_HOST"}
+            {"key": "PG_DB", "value": "${{env.PG_DB_NAME}}"},
+            {"key": "PG_USER", "value": "${{env.PG_DB_USER}}"},
+            {"key": "PG_PASSWORD", "value": "${{env.PG_PASSWORD}}"},
+            {"key": "PG_HOST", "value": "${{env.PG_HOST}}"}
           ]')
 
           echo "Response update vars: $RESPONSE_UPDATE_VARS"
