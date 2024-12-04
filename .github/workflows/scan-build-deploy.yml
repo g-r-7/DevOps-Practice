@@ -267,7 +267,7 @@ jobs:
             {"key": "PG_DB", "value": "${{env.PG_DB_NAME}}"},
             {"key": "PG_USER", "value": "${{env.PG_DB_USER}}"},
             {"key": "PG_PASSWORD", "value": "${{env.PG_PASSWORD}}"},
-            {"key": "PG_HOST", "value": "${{env.PG_HOST}}"}
+            {"key": "PG_HOST", "value": "postgresql"}
           ]')
 
           echo "Response update vars: $RESPONSE_UPDATE_VARS"
