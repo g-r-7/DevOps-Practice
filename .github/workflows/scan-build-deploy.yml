@@ -160,6 +160,8 @@ jobs:
             "ownerId": "${{ secrets.RENDER_OWNER_ID }}"
           }')
 
+          echo "DB Response: $DB_RESPONSE"
+
           if echo "$DB_RESPONSE" | js 'has("message")'; then
           echo "Database Creation Failed"
           exit 1
@@ -171,6 +173,7 @@ jobs:
           id=$(echo "$DB_RESPONSE" | jq -r '.id')
           databaseName=$(echo "$DB_RESPONSE" | jq -r '.databaseName')
           databaseUser=$(echo "$DB_RESPONSE" | jq -r '.databaseUser')
+          databaseHostname=$(echo "$DB_RESPONSE" | jq '.dashboardUrl' | awk -F'/' '{print $NF}' | sed 's/"$//')
 
           echo "postgres id: $id"
 
@@ -178,6 +181,7 @@ jobs:
           echo "PG_ID=$id" >> $GITHUB_ENV
           echo "PG_DB_NAME=$databaseName" >> $GITHUB_ENV
           echo "PG_DB_USER=$databaseUser" >> $GITHUB_ENV
+          echo "PG_HOST=$databaseHostname" >> $GITHUB_ENV
 
           # Informations de connection
           DB_CONNECTION=$(curl --silent --request GET \
@@ -187,13 +191,11 @@ jobs:
 
           echo "informations de connexion: $DB_CONNECTION"
 
-          # Extraire les valeurs avec jq
+          # Extraire le mot de passe avec jq
           password=$(echo "$DB_CONNECTION" | jq -r '.password')
-          internal_host=$(echo "$DB_CONNECTION" | jq -r '.internalConnectionString')
 
           # Ajouter les variables à l'environnement GitHub
           echo "PG_PASSWORD=$password" >> $GITHUB_ENV
-          echo "PG_HOST=$internal_host" >> $GITHUB_ENV
 
 
       #### l'API ne permet pas la création du web_service avec le plan free.
@@ -267,7 +269,7 @@ jobs:
             {"key": "PG_DB", "value": "${{env.PG_DB_NAME}}"},
             {"key": "PG_USER", "value": "${{env.PG_DB_USER}}"},
             {"key": "PG_PASSWORD", "value": "${{env.PG_PASSWORD}}"},
-            {"key": "PG_HOST", "value": "postgresql"}
+            {"key": "PG_HOST", "value": "${{env.PG_HOST}}"}
           ]')
 
           echo "Response update vars: $RESPONSE_UPDATE_VARS"
