@@ -176,66 +176,95 @@ jobs:
           echo "PG_HOST=$internal_host" >> $GITHUB_ENV
 
 
-      - name: Create Web Service
-        if: env.provision == 'true'
+      #### l'API ne permet pas la création du web_service avec le plan free.
+      #### J'ai alors créé le web_service node dans l'application et les variables d'environments seront chargées après la création de la base de données
+
+      # - name: Create Web Service
+      #   if: env.provision == 'true'
+      #   run: |
+      #     SERVICE_RESPONSE=$(curl --silent --request POST \
+      #     --url https://api.render.com/v1/services \
+      #     --header 'accept: application/json' \
+      #     --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}' \
+      #     --header 'content-type: application/json' \
+      #     --data '
+      #     {
+      #       "type": "web_service",
+      #       "autoDeploy": "no",
+      #       "serviceDetails": {
+      #         "pullRequestPreviewsEnabled": "no",
+      #         "previews": {
+      #           "generation": "off"
+      #         },
+      #         "runtime": "node",
+      #         "env": "node",
+      #         "envSpecificDetails": {
+      #           "buildCommand": "npm install",
+      #           "startCommand": "npm start &"
+      #         },
+      #         "plan": "free",
+      #         "maintenanceMode": {
+      #           "enabled": false
+      #         }
+      #       },
+      #       "name": "${{ secrets.RENDER_SERVICE_NAME }}",
+      #       "repo": "https://github.com/g-r-7/DevOps-Practice",
+      #       "ownerId": "${{ secrets.RENDER_OWNER_ID }}",
+      #       "rootDir": ".",
+      #       "envVars": [
+      #         {"key": "PG_DB", "value": "$PG_DB_NAME"},
+      #         {"key": "PG_USER", "value": "$PG_DB_USER"},
+      #         {"key": "PG_PASSWORD", "value": "$PG_PASSWORD"},
+      #         {"key": "PG_HOST", "value": "$PG_HOST"}
+      #       ]
+      #     }')
+
+      #     echo "respose create service: $SERVICE_RESPONSE"
+
+      #     if echo "$SERVICE_RESPONSE" | js 'has("message")'; then
+      #     echo "Service Creation Failed"
+      #     exit 1
+      #     fi
+
+      #     echo "Service Successfully Created"
+
+      #     service_id=$(echo "$SERVICE_RESPONSE" | jq -r '.service.id')
+
+      #     # Ajouter l'ID à l'environnement GitHub
+      #     echo "SERVICE_ID=$service_id" >> $GITHUB_ENV
+
+
+      ###### PUT des variables d'environnement au service #####
+      - name: put environnement variables
         run: |
-          SERVICE_RESPONSE=$(curl --silent --request POST \
-          --url https://api.render.com/v1/services \
+          RESPONSE_UPDATE_VARS=$(curl --request PUT \
+          --url https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/env-vars \
           --header 'accept: application/json' \
           --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}' \
           --header 'content-type: application/json' \
           --data '
-          {
-            "type": "web_service",
-            "autoDeploy": "no",
-            "serviceDetails": {
-              "pullRequestPreviewsEnabled": "no",
-              "previews": {
-                "generation": "off"
-              },
-              "runtime": "node",
-              "env": "node",
-              "envSpecificDetails": {
-                "buildCommand": "npm install",
-                "startCommand": "npm start &"
-              },
-              "plan": "free",
-              "maintenanceMode": {
-                "enabled": false
-              }
-            },
-            "name": "${{ secrets.RENDER_SERVICE_NAME }}",
-            "repo": "https://github.com/g-r-7/DevOps-Practice",
-            "ownerId": "${{ secrets.RENDER_OWNER_ID }}",
-            "rootDir": ".",
-            "envVars": [
-              {"key": "PG_DB", "value": "$PG_DB_NAME"},
-              {"key": "PG_USER", "value": "$PG_DB_USER"},
-              {"key": "PG_PASSWORD", "value": "$PG_PASSWORD"},
-              {"key": "PG_HOST", "value": "$PG_HOST"}
-            ]
-          }')
+          [
+            {"key": "PG_DB", "value": "$PG_DB_NAME"},
+            {"key": "PG_USER", "value": "$PG_DB_USER"},
+            {"key": "PG_PASSWORD", "value": "$PG_PASSWORD"},
+            {"key": "PG_HOST", "value": "$PG_HOST"}
+          ]')
 
-          echo "respose create service: $SERVICE_RESPONSE"
+          echo "Response update vars: $RESPONSE_UPDATE_VARS"
 
-          if echo "$SERVICE_RESPONSE" | js 'has("message")'; then
-          echo "Service Creation Failed"
+          if echo "$RESPONSE_UPDATE_VARS" | jq 'has("message")'; then
+          echo "Variables Update Failed"
           exit 1
           fi
 
-          echo "Service Successfully Created"
-
-          service_id=$(echo "$SERVICE_RESPONSE" | jq -r '.service.id')
-
-          # Ajouter l'ID à l'environnement GitHub
-          echo "SERVICE_ID=$service_id" >> $GITHUB_ENV
+          echo "Variables Successfully Updated"
 
           
       ########## Déploiement du service ############
       - name: Déploiement
         run: |
           DEPLOY_RESPONSE=$(curl --silent --request POST \
-          --url https://api.render.com/v1/services/$SERVICE_ID/deploys \
+          --url https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys \
           --header 'accept: application/json' \
           --header 'Authorization: Bearer ${{ secrets.RENDER_API_KEY }}' \
           --header 'content-type: application/json' \
